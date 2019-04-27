@@ -1,2 +1,3 @@
 #!/bin/bash
 sed -i 's/(\.\/docs\//(https:\/\/github.com\/imgproxy\/imgproxy\/blob\/master\/docs\//' ./README.md
+cat ./README.md

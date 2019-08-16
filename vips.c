@@ -1,4 +1,5 @@
 #include "vips.h"
+#include <string.h>
 
 #define VIPS_SUPPORT_SMARTCROP \
   (VIPS_MAJOR_VERSION > 8 || (VIPS_MAJOR_VERSION == 8 && VIPS_MINOR_VERSION >= 5))
@@ -18,7 +19,25 @@
 #define VIPS_SUPPORT_PNG_QUANTIZATION \
   (VIPS_MAJOR_VERSION > 8 || (VIPS_MAJOR_VERSION == 8 && VIPS_MINOR_VERSION >= 7))
 
+#define VIPS_SUPPORT_WEBP_SCALE_ON_LOAD \
+  (VIPS_MAJOR_VERSION > 8 || (VIPS_MAJOR_VERSION == 8 && VIPS_MINOR_VERSION >= 8))
+
+#define VIPS_SUPPORT_WEBP_ANIMATION \
+  (VIPS_MAJOR_VERSION > 8 || (VIPS_MAJOR_VERSION == 8 && VIPS_MINOR_VERSION >= 8))
+
+#define VIPS_SUPPORT_HEIF \
+  (VIPS_MAJOR_VERSION > 8 || (VIPS_MAJOR_VERSION == 8 && VIPS_MINOR_VERSION >= 8))
+
+#define VIPS_SUPPORT_BUILTIN_ICC \
+  (VIPS_MAJOR_VERSION > 8 || (VIPS_MAJOR_VERSION == 8 && VIPS_MINOR_VERSION >= 8))
+
 #define EXIF_ORIENTATION "exif-ifd0-Orientation"
+
+#if (VIPS_MAJOR_VERSION > 8 || (VIPS_MAJOR_VERSION == 8 && VIPS_MINOR_VERSION >= 8))
+  #define VIPS_BLOB_DATA_TYPE const void *
+#else
+  #define VIPS_BLOB_DATA_TYPE void *
+#endif
 
 int
 vips_initialize() {
@@ -55,6 +74,8 @@ vips_type_find_load_go(int imgtype) {
     return vips_type_find("VipsOperation", "gifload_buffer");
   case (SVG):
     return vips_type_find("VipsOperation", "svgload_buffer");
+  case (HEIC):
+    return vips_type_find("VipsOperation", "heifload_buffer");
   }
   return 0;
 }
@@ -73,6 +94,8 @@ vips_type_find_save_go(int imgtype) {
     return vips_type_find("VipsOperation", "magicksave_buffer");
   case (ICO):
     return vips_type_find("VipsOperation", "magicksave_buffer");
+  case (HEIC):
+    return vips_type_find("VipsOperation", "heifsave_buffer");
   }
 
   return 0;
@@ -92,11 +115,20 @@ vips_pngload_go(void *buf, size_t len, VipsImage **out) {
 }
 
 int
-vips_webpload_go(void *buf, size_t len, int shrink, VipsImage **out) {
-  if (shrink > 1)
-    return vips_webpload_buffer(buf, len, out, "access", VIPS_ACCESS_SEQUENTIAL, "shrink", shrink, NULL);
-
-  return vips_webpload_buffer(buf, len, out, "access", VIPS_ACCESS_SEQUENTIAL, NULL);
+vips_webpload_go(void *buf, size_t len, double scale, int pages, VipsImage **out) {
+  return vips_webpload_buffer(
+    buf, len, out,
+    "access", VIPS_ACCESS_SEQUENTIAL,
+#if VIPS_SUPPORT_WEBP_SCALE_ON_LOAD
+    "scale", scale,
+#else
+    "shrink", (int)(1.0 / scale),
+#endif
+#if VIPS_SUPPORT_WEBP_ANIMATION
+    "n", pages,
+#endif
+    NULL
+  );
 }
 
 int
@@ -120,6 +152,16 @@ vips_svgload_go(void *buf, size_t len, double scale, VipsImage **out) {
 }
 
 int
+vips_heifload_go(void *buf, size_t len, VipsImage **out) {
+#if VIPS_SUPPORT_HEIF
+  return vips_heifload_buffer(buf, len, out, "access", VIPS_ACCESS_SEQUENTIAL, "autorotate", 1, NULL);
+#else
+  vips_error("vips_heifload_go", "Loading HEIF is not supported");
+  return 1;
+#endif
+}
+
+int
 vips_get_exif_orientation(VipsImage *image) {
   const char *orientation;
 
@@ -133,11 +175,7 @@ vips_get_exif_orientation(VipsImage *image) {
 
 int
 vips_support_smartcrop() {
-#if VIPS_SUPPORT_SMARTCROP
-  return 1;
-#else
-  return 0;
-#endif
+  return VIPS_SUPPORT_SMARTCROP;
 }
 
 VipsBandFormat
@@ -146,7 +184,12 @@ vips_band_format(VipsImage *in) {
 }
 
 gboolean
-vips_is_animated_gif(VipsImage * in) {
+vips_support_webp_animation() {
+  return VIPS_SUPPORT_WEBP_ANIMATION;
+}
+
+gboolean
+vips_is_animated(VipsImage * in) {
   return( vips_image_get_typeof(in, "page-height") != G_TYPE_INVALID &&
           vips_image_get_typeof(in, "gif-delay") != G_TYPE_INVALID &&
           vips_image_get_typeof(in, "gif-loop") != G_TYPE_INVALID );
@@ -216,12 +259,38 @@ vips_resize_with_premultiply(VipsImage *in, VipsImage **out, double scale) {
 }
 
 int
-vips_need_icc_import(VipsImage *in) {
-  return (vips_image_get_typeof(in, VIPS_META_ICC_NAME) ||
-    in->Type == VIPS_INTERPRETATION_CMYK) &&
-		in->Coding == VIPS_CODING_NONE &&
-		(in->BandFmt == VIPS_FORMAT_UCHAR ||
-		 in->BandFmt == VIPS_FORMAT_USHORT);
+vips_icc_is_srgb_iec61966(VipsImage *in) {
+  VIPS_BLOB_DATA_TYPE data;
+  size_t data_len;
+
+  // 1998-12-01
+  static char date[] = { 7, 206, 0, 2, 0, 9 };
+  // 2.1
+  static char version[] = { 2, 16, 0, 0 };
+
+  if (vips_image_get_blob(in, VIPS_META_ICC_NAME, &data, &data_len))
+    return FALSE;
+
+  // Less than header size
+  if (data_len < 128)
+    return FALSE;
+
+  // Predict it is sRGB IEC61966 2.1 by checking some header fields
+  return ((memcmp(data + 48, "IEC ",  4) == 0) && // Device manufacturer
+          (memcmp(data + 52, "sRGB",  4) == 0) && // Device model
+          (memcmp(data + 80, "HP  ",  4) == 0) && // Profile creator
+          (memcmp(data + 24, date,    6) == 0) && // Date of creation
+          (memcmp(data + 8,  version, 4) == 0));  // Version
+}
+
+int
+vips_has_embedded_icc(VipsImage *in) {
+  return vips_image_get_typeof(in, VIPS_META_ICC_NAME) != 0;
+}
+
+int
+vips_support_builtin_icc() {
+  return VIPS_SUPPORT_BUILTIN_ICC;
 }
 
 int
@@ -295,8 +364,16 @@ vips_replicate_go(VipsImage *in, VipsImage **out, int width, int height) {
 }
 
 int
-vips_embed_go(VipsImage *in, VipsImage **out, int x, int y, int width, int height) {
-  return vips_embed(in, out, x, y, width, height, NULL);
+vips_embed_go(VipsImage *in, VipsImage **out, int x, int y, int width, int height, double *bg, int bgn) {
+  VipsArrayDouble *bga = vips_array_double_new(bg, bgn);
+  int ret = vips_embed(
+    in, out, x, y, width, height,
+    "extend", VIPS_EXTEND_BACKGROUND,
+    "background", bga,
+    NULL
+  );
+  vips_area_unref((VipsArea *)bga);
+  return ret;
 }
 
 int
@@ -493,6 +570,16 @@ vips_icosave_go(VipsImage *in, void **buf, size_t *len) {
   return vips_magicksave_buffer(in, buf, len, "format", "ico", NULL);
 #else
   vips_error("vips_icosave_go", "Saving ICO is not supported");
+  return 1;
+#endif
+}
+
+int
+vips_heifsave_go(VipsImage *in, void **buf, size_t *len, int quality) {
+#if VIPS_SUPPORT_HEIF
+  return vips_heifsave_buffer(in, buf, len, "Q", quality, NULL);
+#else
+  vips_error("vips_heifsave_go", "Saving HEIF is not supported");
   return 1;
 #endif
 }

@@ -29,10 +29,12 @@ $ echo $(xxd -g 2 -l 64 -p /dev/random | tr -d '\n')
 * `IMGPROXY_BIND`: TCP address and port to listen on. Default: `:8080`;
 * `IMGPROXY_READ_TIMEOUT`: the maximum duration (in seconds) for reading the entire image request, including the body. Default: `10`;
 * `IMGPROXY_WRITE_TIMEOUT`: the maximum duration (in seconds) for writing the response. Default: `10`;
+* `IMGPROXY_KEEP_ALIVE_TIMEOUT`: the maximum duration (in seconds) to wait for the next request before closing the connection. When set to `0`, keep-alive is disabled. Default: `10`;
 * `IMGPROXY_DOWNLOAD_TIMEOUT`: the maximum duration (in seconds) for downloading the source image. Default: `5`;
 * `IMGPROXY_CONCURRENCY`: the maximum number of image requests to be processed simultaneously. Default: number of CPU cores times two;
 * `IMGPROXY_MAX_CLIENTS`: the maximum number of simultaneous active connections. Default: `IMGPROXY_CONCURRENCY * 10`;
 * `IMGPROXY_TTL`: duration (in seconds) sent in `Expires` and `Cache-Control: max-age` HTTP headers. Default: `3600` (1 hour);
+* `IMGPROXY_SO_REUSEPORT`: when `true`, enables `SO_REUSEPORT` socket option (currently on linux and darwin only);
 * `IMGPROXY_USER_AGENT`: User-Agent header that will be sent with source image request. Default: `imgproxy/%current_version`;
 * `IMGPROXY_USE_ETAG`: when `true`, enables using [ETag](https://en.wikipedia.org/wiki/HTTP_ETag) HTTP header for HTTP cache control. Default: false;
 
@@ -43,11 +45,11 @@ imgproxy protects you from so-called image bombs. Here is how you can specify ma
 * `IMGPROXY_MAX_SRC_RESOLUTION`: the maximum resolution of the source image, in megapixels. Images with larger actual size will be rejected. Default: `16.8`;
 * `IMGPROXY_MAX_SRC_FILE_SIZE`: the maximum size of the source image, in bytes. Images with larger file size will be rejected. When `0`, file size check is disabled. Default: `0`;
 
-imgproxy can process animated GIFs, but since this operation is pretty heavy, only one frame is processed by default. You can increase the maximum of GIF frames to process with the following variable:
+imgproxy can process animated images (GIF, WebP), but since this operation is pretty heavy, only one frame is processed by default. You can increase the maximum of animation frames to process with the following variable:
 
-* `IMGPROXY_MAX_GIF_FRAMES`: the maximum of animated GIF frames to being processed. Default: `1`.
+* `IMGPROXY_MAX_ANIMATION_FRAMES`: the maximum of animated image frames to being processed. Default: `1`.
 
-**Note:** imgproxy summarizes all GIF frames resolutions while checking source image resolution.
+**Note:** imgproxy summarizes all frames resolutions while checking source image resolution.
 
 You can also specify a secret to enable authorization with the HTTP `Authorization` header for use in production environments:
 
@@ -60,6 +62,10 @@ imgproxy does not send CORS headers by default. Specify allowed origin to enable
 When you use imgproxy in a development environment, it can be useful to ignore SSL verification:
 
 * `IMGPROXY_IGNORE_SSL_VERIFICATION`: when true, disables SSL verification, so imgproxy can be used in a development environment with self-signed SSL certificates.
+
+Also you may want imgproxy to respond with the same error message that it writes to the log:
+
+* `IMGPROXY_DEVELOPMENT_ERRORS_MODE`: when true, imgproxy will respond with detailed error messages. Not recommended for production because some errors may contain stack trace.
 
 ### Compression
 
@@ -125,6 +131,12 @@ sharp=sharpen:0.7
 # Blur the image to hide details
 blurry=blur:2
 ```
+
+#### Using only presets
+
+imgproxy can be switched into "presets-only mode". In this mode, imgproxy accepts only `preset` option arguments as processing options. Example: `http://imgproxy.example.com/unsafe/thumbnail:blurry:watermarked/plain/http://example.com/images/curiosity.jpg@png`
+
+* `IMGPROXY_ONLY_PRESETS`: disable all URL formats and enable presets-only mode.
 
 ### Serving local files
 

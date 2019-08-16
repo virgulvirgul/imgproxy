@@ -25,7 +25,7 @@ imgproxy supports the following resizing types:
 
 * `fit`: resizes the image while keeping aspect ratio to fit given size;
 * `fill`: resizes the image while keeping aspect ratio to fill given size and cropping projecting parts;
-* `crop`: crops the image to a given size.
+* `auto`: if both source and resulting dimensions have the same orientation (portrait or landscape), imgproxy will use `fill`. Otherwise, it will use `fit`.
 
 #### Width and height
 
@@ -57,7 +57,7 @@ There are two ways to specify source url:
 
 ##### Plain
 
-The source URL can be provided as is, prendended by `/plain/` part:
+The source URL can be provided as is, prepended by `/plain/` part:
 
 ```
 /plain/http://example.com/images/curiosity.jpg

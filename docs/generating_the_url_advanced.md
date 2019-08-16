@@ -60,7 +60,7 @@ Defines how imgproxy will resize the source image. Supported resizing types are:
 
 * `fit`: resizes the image while keeping aspect ratio to fit given size;
 * `fill`: resizes the image while keeping aspect ratio to fill given size and cropping projecting parts;
-* `crop`: crops the image to a given size.
+* `auto`: if both source and resulting dimensions have the same orientation (portrait or landscape), imgproxy will use `fill`. Otherwise, it will use `fit`.
 
 Default: `fit`
 
@@ -71,7 +71,7 @@ width:%width
 w:%width
 ```
 
-Defines the width of the resulting image. When set to `0`, imgproxy will calculate the resulting width using the defined height and source aspect ratio. When set to `0` and the `crop` resizing type is used, imgproxy will use the full width of the source image.
+Defines the width of the resulting image. When set to `0`, imgproxy will calculate the resulting width using the defined height and source aspect ratio.
 
 Default: `0`
 
@@ -82,7 +82,7 @@ height:%height
 h:%height
 ```
 
-Defines the height of the resulting image. When set to `0`, imgproxy will calculate resulting height using the defined width and source aspect ratio. When set to `0` and `crop` resizing type is used, imgproxy will use the full height of the source image.
+Defines the height of the resulting image. When set to `0`, imgproxy will calculate resulting height using the defined width and source aspect ratio.
 
 Default: `0`
 
@@ -121,25 +121,42 @@ Default: `0`
 ##### Gravity
 
 ```
-gravity:%gravity
-g:%gravity
+gravity:%gravity_type:%x_offset:%y_offset
+g:%gravity_type:%x_offset:%y_offset
 ```
 
-When imgproxy needs to cut some parts of the image, it is guided by the gravity. The following values are supported:
+When imgproxy needs to cut some parts of the image, it is guided by the gravity.
 
-* `no`: north (top edge);
-* `so`: south (bottom edge);
-* `ea`: east (right edge);
-* `we`: west (left edge);
-* `noea`: north-east (top-right corner);
-* `nowe`: north-west (top-left corner);
-* `soea`: south-east (bottom-right corner);
-* `sowe`: south-west (bottom-left corner);
-* `ce`: center;
-* `sm`: smart. `libvips` detects the most "interesting" section of the image and considers it as the center of the resulting image;
-* `fp:%x:%y`: focus point. `x` and `y` are floating point numbers between 0 and 1 that define the coordinates of the center of the resulting image. Treat 0 and 1 as right/left for `x` and top/bottom for `y`.
+* `gravity_type` - specifies the gravity type. Available values:
+  * `no`: north (top edge);
+  * `so`: south (bottom edge);
+  * `ea`: east (right edge);
+  * `we`: west (left edge);
+  * `noea`: north-east (top-right corner);
+  * `nowe`: north-west (top-left corner);
+  * `soea`: south-east (bottom-right corner);
+  * `sowe`: south-west (bottom-left corner);
+  * `ce`: center.
+* `x_offset`, `y_offset` - (optional) specify gravity offset by X and Y axes.
 
-Default: `ce`
+Default: `ce:0:0`
+
+###### Special gravities:
+
+* `gravity:sm` - smart gravity. `libvips` detects the most "interesting" section of the image and considers it as the center of the resulting image. Offsets are not applicable here;
+* `gravity:fp:%x:%y` - focus point gravity. `x` and `y` are floating point numbers between 0 and 1 that define the coordinates of the center of the resulting image. Treat 0 and 1 as right/left for `x` and top/bottom for `y`.
+
+##### Crop
+
+```
+crop:%width:%height:%gravity
+c:%width:%height:%gravity
+```
+
+Defines an area of the image to be processed (crop before resize).
+
+* `width` and `height` define the size of the area. When `width` or `height` is set to `0`, imgproxy will use the full width/height of the source image.
+* `gravity` accepts the same values as [gravity](#gravity) option. When `gravity` is not set, imgproxy will use the value of the [gravity](#gravity) option.
 
 ##### Quality
 
@@ -241,6 +258,17 @@ cb:%string
 Cache buster doesn't affect image processing but it's changing allows to bypass CDN, proxy server and browser cache. Useful when you have changed some things that are not reflected in the URL like image quality settings, presets or watermark data.
 
 It's highly recommended to prefer `cachebuster` option over URL query string because the option can be properly signed.
+
+Default: empty
+
+##### Filename
+
+```
+filenale:%string
+fn:%string
+```
+
+Defines a filename for `Content-Disposition` header. When not specified, imgproxy will get filename from the source url.
 
 Default: empty
 

@@ -1,15 +1,34 @@
-FROM alpine:edge
+FROM golang:1-alpine3.10
 LABEL maintainer="Sergey Alexandrovich <darthsim@gmail.com>"
 
 ENV GOPATH /go
 ENV PATH /usr/local/go/bin:$PATH
 
 # Install dependencies
-RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories \
-  && apk --no-cache upgrade \
-  && apk add --no-cache curl ca-certificates go gcc g++ make musl-dev fftw-dev glib-dev expat-dev \
-    libjpeg-turbo-dev libpng-dev libwebp-dev giflib-dev librsvg-dev libexif-dev lcms2-dev libimagequant-dev \
-    libheif-dev
+RUN apk --no-cache upgrade \
+  && apk add --no-cache \
+    curl \
+    git \
+    ca-certificates \
+    gcc \
+    g++ \
+    make \
+    musl-dev \
+    fftw-dev \
+    glib-dev \
+    libtool \
+    expat-dev \
+    libjpeg-turbo-dev \
+    libpng-dev \
+    libwebp-dev \
+    giflib-dev \
+    librsvg-dev \
+    libexif-dev \
+    lcms2-dev \
+    libheif-dev \
+    tiff-dev \
+  && apk add --no-cache --repository http://dl-cdn.alpinelinux.org/alpine/edge/testing \
+    libimagequant-dev
 
 # Build ImageMagick
 RUN cd /root \
@@ -29,6 +48,7 @@ RUN cd /root \
     --without-bzlib \
     --without-dps \
     --without-freetype \
+    --without-fontconfig \
     --without-jbig \
     --without-jpeg \
     --without-lcms \
@@ -38,6 +58,8 @@ RUN cd /root \
     --without-wmf \
     --without-xml \
     --without-webp \
+    --without-heic \
+    --without-pango \
   && make install-strip
 
 # Build libvips
@@ -47,20 +69,18 @@ RUN cd /root \
   && curl -Ls https://github.com/libvips/libvips/releases/download/v$VIPS_VERSION/vips-$VIPS_VERSION.tar.gz | tar -xz \
   && cd vips-$VIPS_VERSION \
   && ./configure \
-    --disable-magickload \
     --without-python \
-    --without-tiff \
     --without-OpenEXR \
     --enable-debug=no \
     --disable-static \
     --enable-silent-rules \
   && make install-strip
 
-ADD . /go/src/github.com/imgproxy/imgproxy
-WORKDIR /go/src/github.com/imgproxy/imgproxy
+ADD . /app
+WORKDIR /app
 
 # Build imgproxy
-RUN cd /go/src/github.com/imgproxy/imgproxy \
+RUN cd /app \
   && CGO_LDFLAGS_ALLOW="-s|-w" go build -v -o /usr/local/bin/imgproxy
 
 # Copy compiled libs here to copy them to the final image
@@ -71,13 +91,29 @@ RUN cd /root \
 # ==================================================================================================
 # Final image
 
-FROM alpine:edge
+FROM alpine:3.10
 LABEL maintainer="Sergey Alexandrovich <darthsim@gmail.com>"
 
-RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories \
-  && apk --no-cache upgrade \
-  && apk add --no-cache bash ca-certificates fftw glib expat libjpeg-turbo libpng \
-    libwebp giflib librsvg libgsf libexif lcms2 libimagequant libheif \
+RUN apk --no-cache upgrade \
+  && apk add --no-cache \
+    bash \
+    ca-certificates \
+    fftw \
+    glib \
+    libltdl \
+    expat \
+    libjpeg-turbo \
+    libpng \
+    libwebp \
+    giflib \
+    librsvg \
+    libgsf \
+    libexif \
+    lcms2 \
+    libheif \
+    tiff \
+  && apk add --no-cache --repository http://dl-cdn.alpinelinux.org/alpine/edge/testing \
+    libimagequant \
   && rm -rf /var/cache/apk*
 
 COPY --from=0 /usr/local/bin/imgproxy /usr/local/bin/

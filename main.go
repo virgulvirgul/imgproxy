@@ -10,14 +10,14 @@ import (
 	"time"
 )
 
-const version = "2.3.0"
+const version = "2.6.0"
 
 type ctxKey string
 
 func initialize() {
 	log.SetOutput(os.Stdout)
 
-	initSyslog()
+	initLog()
 	configure()
 	initNewrelic()
 	initPrometheus()
@@ -38,7 +38,7 @@ func main() {
 			if logMemStats {
 				var m runtime.MemStats
 				runtime.ReadMemStats(&m)
-				logNotice("[MEMORY USAGE] Sys: %d; HeapIdle: %d; HeapInuse: %d", m.Sys/1024/1024, m.HeapIdle/1024/1024, m.HeapInuse/1024/1024)
+				logDebug("MEMORY USAGE: Sys=%d HeapIdle=%d HeapInuse=%d", m.Sys/1024/1024, m.HeapIdle/1024/1024, m.HeapInuse/1024/1024)
 			}
 		}
 	}()

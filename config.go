@@ -176,6 +176,7 @@ type config struct {
 	S3Enabled           bool
 	S3Region            string
 	S3Endpoint          string
+	GCSEnabled          bool
 	GCSKey              string
 
 	ETagEnabled bool
@@ -203,6 +204,8 @@ type config struct {
 	SentryEnvironment string
 	SentryRelease     string
 
+	ReportDownloadingErrors bool
+
 	FreeMemoryInterval             int
 	DownloadBufferSize             int
 	GZipBufferSize                 int
@@ -222,7 +225,6 @@ var conf = config{
 	SignatureSize:                  32,
 	PngQuantizationColors:          256,
 	Quality:                        80,
-	GZipCompression:                5,
 	UserAgent:                      fmt.Sprintf("imgproxy/%s", version),
 	Presets:                        make(presets),
 	WatermarkOpacity:               1,
@@ -230,6 +232,7 @@ var conf = config{
 	HoneybadgerEnv:                 "production",
 	SentryEnvironment:              "production",
 	SentryRelease:                  fmt.Sprintf("imgproxy/%s", version),
+	ReportDownloadingErrors:        true,
 	FreeMemoryInterval:             10,
 	BufferPoolCalibrationThreshold: 1024,
 }
@@ -308,6 +311,7 @@ func configure() {
 	strEnvConfig(&conf.S3Region, "IMGPROXY_S3_REGION")
 	strEnvConfig(&conf.S3Endpoint, "IMGPROXY_S3_ENDPOINT")
 
+	boolEnvConfig(&conf.GCSEnabled, "IMGPROXY_USE_GCS")
 	strEnvConfig(&conf.GCSKey, "IMGPROXY_GCS_KEY")
 
 	boolEnvConfig(&conf.ETagEnabled, "IMGPROXY_USE_ETAG")
@@ -335,6 +339,7 @@ func configure() {
 	strEnvConfig(&conf.SentryDSN, "IMGPROXY_SENTRY_DSN")
 	strEnvConfig(&conf.SentryEnvironment, "IMGPROXY_SENTRY_ENVIRONMENT")
 	strEnvConfig(&conf.SentryRelease, "IMGPROXY_SENTRY_RELEASE")
+	boolEnvConfig(&conf.ReportDownloadingErrors, "IMGPROXY_REPORT_DOWNLOADING_ERRORS")
 
 	intEnvConfig(&conf.FreeMemoryInterval, "IMGPROXY_FREE_MEMORY_INTERVAL")
 	intEnvConfig(&conf.DownloadBufferSize, "IMGPROXY_DOWNLOAD_BUFFER_SIZE")
@@ -424,22 +429,33 @@ func configure() {
 		logFatal("GZip compression can't be greater than 9, now - %d\n", conf.GZipCompression)
 	}
 
+	if conf.GZipCompression > 0 {
+		logWarning("GZip compression is deprecated and can be removed in future versions")
+	}
+
 	if conf.IgnoreSslVerification {
 		logWarning("Ignoring SSL verification is very unsafe")
 	}
 
 	if conf.LocalFileSystemRoot != "" {
 		stat, err := os.Stat(conf.LocalFileSystemRoot)
+
 		if err != nil {
 			logFatal("Cannot use local directory: %s", err)
-		} else {
-			if !stat.IsDir() {
-				logFatal("Cannot use local directory: not a directory")
-			}
 		}
+
+		if !stat.IsDir() {
+			logFatal("Cannot use local directory: not a directory")
+		}
+
 		if conf.LocalFileSystemRoot == "/" {
-			logNotice("Exposing root via IMGPROXY_LOCAL_FILESYSTEM_ROOT is unsafe")
+			logWarning("Exposing root via IMGPROXY_LOCAL_FILESYSTEM_ROOT is unsafe")
 		}
+	}
+
+	if _, ok := os.LookupEnv("IMGPROXY_USE_GCS"); !ok && len(conf.GCSKey) > 0 {
+		logWarning("Set IMGPROXY_USE_GCS to true since it may be required by future versions to enable GCS support")
+		conf.GCSEnabled = true
 	}
 
 	if err := checkPresets(conf.Presets); err != nil {

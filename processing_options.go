@@ -10,6 +10,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+
+	structdiff "github.com/imgproxy/imgproxy/struct-diff"
 )
 
 type urlOption struct {
@@ -103,20 +106,20 @@ type watermarkOptions struct {
 }
 
 type processingOptions struct {
-	Resize     resizeType
-	Width      int
-	Height     int
-	Dpr        float64
-	Gravity    gravityOptions
-	Enlarge    bool
-	Extend     bool
-	Crop       cropOptions
-	Format     imageType
-	Quality    int
-	Flatten    bool
-	Background rgbColor
-	Blur       float32
-	Sharpen    float32
+	ResizingType resizeType
+	Width        int
+	Height       int
+	Dpr          float64
+	Gravity      gravityOptions
+	Enlarge      bool
+	Extend       bool
+	Crop         cropOptions
+	Format       imageType
+	Quality      int
+	Flatten      bool
+	Background   rgbColor
+	Blur         float32
+	Sharpen      float32
 
 	CacheBuster string
 
@@ -140,13 +143,6 @@ const (
 	msgInvalidURL = "Invalid URL"
 )
 
-var (
-	errInvalidImageURL                    = errors.New("Invalid image url")
-	errInvalidURLEncoding                 = errors.New("Invalid url encoding")
-	errResultingImageFormatIsNotSupported = errors.New("Resulting image format is not supported")
-	errInvalidPath                        = newError(404, "Invalid path", msgInvalidURL)
-)
-
 func (gt gravityType) String() string {
 	for k, v := range gravityTypes {
 		if v == gt {
@@ -156,6 +152,15 @@ func (gt gravityType) String() string {
 	return ""
 }
 
+func (gt gravityType) MarshalJSON() ([]byte, error) {
+	for k, v := range gravityTypes {
+		if v == gt {
+			return []byte(fmt.Sprintf("%q", k)), nil
+		}
+	}
+	return []byte("null"), nil
+}
+
 func (rt resizeType) String() string {
 	for k, v := range resizeTypes {
 		if v == rt {
@@ -163,6 +168,44 @@ func (rt resizeType) String() string {
 		}
 	}
 	return ""
+}
+
+func (rt resizeType) MarshalJSON() ([]byte, error) {
+	for k, v := range resizeTypes {
+		if v == rt {
+			return []byte(fmt.Sprintf("%q", k)), nil
+		}
+	}
+	return []byte("null"), nil
+}
+
+var (
+	_newProcessingOptions    processingOptions
+	newProcessingOptionsOnce sync.Once
+)
+
+func newProcessingOptions() *processingOptions {
+	newProcessingOptionsOnce.Do(func() {
+		_newProcessingOptions = processingOptions{
+			ResizingType: resizeFit,
+			Width:        0,
+			Height:       0,
+			Gravity:      gravityOptions{Type: gravityCenter},
+			Enlarge:      false,
+			Quality:      conf.Quality,
+			Format:       imageTypeUnknown,
+			Background:   rgbColor{255, 255, 255},
+			Blur:         0,
+			Sharpen:      0,
+			Dpr:          1,
+			Watermark:    watermarkOptions{Opacity: 1, Replicate: false, Gravity: gravityCenter},
+		}
+	})
+
+	po := _newProcessingOptions
+	po.UsedPresets = make([]string, 0, len(conf.Presets))
+
+	return &po
 }
 
 func (po *processingOptions) isPresetUsed(name string) bool {
@@ -176,6 +219,18 @@ func (po *processingOptions) isPresetUsed(name string) bool {
 
 func (po *processingOptions) presetUsed(name string) {
 	po.UsedPresets = append(po.UsedPresets, name)
+}
+
+func (po *processingOptions) Diff() structdiff.Entries {
+	return structdiff.Diff(newProcessingOptions(), po)
+}
+
+func (po *processingOptions) String() string {
+	return po.Diff().String()
+}
+
+func (po *processingOptions) MarshalJSON() ([]byte, error) {
+	return po.Diff().MarshalJSON()
 }
 
 func colorFromHex(hexcolor string) (rgbColor, error) {
@@ -200,10 +255,15 @@ func colorFromHex(hexcolor string) (rgbColor, error) {
 func decodeBase64URL(parts []string) (string, string, error) {
 	var format string
 
-	urlParts := strings.Split(strings.Join(parts, ""), ".")
+	encoded := strings.Join(parts, "")
+	urlParts := strings.Split(encoded, ".")
+
+	if len(urlParts[0]) == 0 {
+		return "", "", errors.New("Image URL is empty")
+	}
 
 	if len(urlParts) > 2 {
-		return "", "", errInvalidURLEncoding
+		return "", "", fmt.Errorf("Multiple formats are specified: %s", encoded)
 	}
 
 	if len(urlParts) == 2 && len(urlParts[1]) > 0 {
@@ -212,14 +272,10 @@ func decodeBase64URL(parts []string) (string, string, error) {
 
 	imageURL, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(urlParts[0], "="))
 	if err != nil {
-		return "", "", errInvalidURLEncoding
+		return "", "", fmt.Errorf("Invalid url encoding: %s", encoded)
 	}
 
 	fullURL := fmt.Sprintf("%s%s", conf.BaseURL, string(imageURL))
-
-	if _, err := url.ParseRequestURI(fullURL); err != nil {
-		return "", "", errInvalidImageURL
-	}
 
 	return fullURL, format, nil
 }
@@ -227,29 +283,34 @@ func decodeBase64URL(parts []string) (string, string, error) {
 func decodePlainURL(parts []string) (string, string, error) {
 	var format string
 
-	urlParts := strings.Split(strings.Join(parts, "/"), "@")
+	encoded := strings.Join(parts, "/")
+	urlParts := strings.Split(encoded, "@")
+
+	if len(urlParts[0]) == 0 {
+		return "", "", errors.New("Image URL is empty")
+	}
 
 	if len(urlParts) > 2 {
-		return "", "", errInvalidURLEncoding
+		return "", "", fmt.Errorf("Multiple formats are specified: %s", encoded)
 	}
 
 	if len(urlParts) == 2 && len(urlParts[1]) > 0 {
 		format = urlParts[1]
 	}
 
-	if unescaped, err := url.PathUnescape(urlParts[0]); err == nil {
-		fullURL := fmt.Sprintf("%s%s", conf.BaseURL, unescaped)
-		if _, err := url.ParseRequestURI(fullURL); err == nil {
-			return fullURL, format, nil
-		}
+	unescaped, err := url.PathUnescape(urlParts[0])
+	if err != nil {
+		return "", "", fmt.Errorf("Invalid url encoding: %s", encoded)
 	}
 
-	return "", "", errInvalidImageURL
+	fullURL := fmt.Sprintf("%s%s", conf.BaseURL, unescaped)
+
+	return fullURL, format, nil
 }
 
 func decodeURL(parts []string) (string, string, error) {
 	if len(parts) == 0 {
-		return "", "", errInvalidURLEncoding
+		return "", "", errors.New("Image URL is empty")
 	}
 
 	if parts[0] == urlTokenPlain && len(parts) > 1 {
@@ -389,7 +450,7 @@ func applyResizingTypeOption(po *processingOptions, args []string) error {
 	}
 
 	if r, ok := resizeTypes[args[0]]; ok {
-		po.Resize = r
+		po.ResizingType = r
 	} else {
 		return fmt.Errorf("Invalid resize type: %s", args[0])
 	}
@@ -553,7 +614,7 @@ func applyPresetOption(po *processingOptions, args []string) error {
 				return err
 			}
 		} else {
-			return fmt.Errorf("Unknown asset: %s", preset)
+			return fmt.Errorf("Unknown preset: %s", preset)
 		}
 	}
 
@@ -620,8 +681,8 @@ func applyFormatOption(po *processingOptions, args []string) error {
 		return fmt.Errorf("Invalid image format: %s", args[0])
 	}
 
-	if !vipsTypeSupportSave[po.Format] {
-		return errResultingImageFormatIsNotSupported
+	if !imageTypeSaveSupport(po.Format) {
+		return fmt.Errorf("Resulting image format is not supported: %s", po.Format)
 	}
 
 	return nil
@@ -729,23 +790,7 @@ func parseURLOptions(opts []string) (urlOptions, []string) {
 }
 
 func defaultProcessingOptions(headers *processingHeaders) (*processingOptions, error) {
-	var err error
-
-	po := processingOptions{
-		Resize:      resizeFit,
-		Width:       0,
-		Height:      0,
-		Gravity:     gravityOptions{Type: gravityCenter},
-		Enlarge:     false,
-		Quality:     conf.Quality,
-		Format:      imageTypeUnknown,
-		Background:  rgbColor{255, 255, 255},
-		Blur:        0,
-		Sharpen:     0,
-		Dpr:         1,
-		Watermark:   watermarkOptions{Opacity: 1, Replicate: false, Gravity: gravityCenter},
-		UsedPresets: make([]string, 0, len(conf.Presets)),
-	}
+	po := newProcessingOptions()
 
 	if strings.Contains(headers.Accept, "image/webp") {
 		po.PreferWebP = conf.EnableWebpDetection || conf.EnforceWebp
@@ -768,10 +813,12 @@ func defaultProcessingOptions(headers *processingHeaders) (*processingOptions, e
 		}
 	}
 	if _, ok := conf.Presets["default"]; ok {
-		err = applyPresetOption(&po, []string{"default"})
+		if err := applyPresetOption(po, []string{"default"}); err != nil {
+			return po, err
+		}
 	}
 
-	return &po, err
+	return po, nil
 }
 
 func parsePathAdvanced(parts []string, headers *processingHeaders) (string, *processingOptions, error) {
@@ -782,7 +829,7 @@ func parsePathAdvanced(parts []string, headers *processingHeaders) (string, *pro
 
 	options, urlParts := parseURLOptions(parts)
 
-	if err := applyProcessingOptions(po, options); err != nil {
+	if err = applyProcessingOptions(po, options); err != nil {
 		return "", po, err
 	}
 
@@ -792,7 +839,7 @@ func parsePathAdvanced(parts []string, headers *processingHeaders) (string, *pro
 	}
 
 	if len(extension) > 0 {
-		if err := applyFormatOption(po, []string{extension}); err != nil {
+		if err = applyFormatOption(po, []string{extension}); err != nil {
 			return "", po, err
 		}
 	}
@@ -809,7 +856,7 @@ func parsePathPresets(parts []string, headers *processingHeaders) (string, *proc
 	presets := strings.Split(parts[0], ":")
 	urlParts := parts[1:]
 
-	if err := applyPresetOption(po, presets); err != nil {
+	if err = applyPresetOption(po, presets); err != nil {
 		return "", nil, err
 	}
 
@@ -819,7 +866,7 @@ func parsePathPresets(parts []string, headers *processingHeaders) (string, *proc
 	}
 
 	if len(extension) > 0 {
-		if err := applyFormatOption(po, []string{extension}); err != nil {
+		if err = applyFormatOption(po, []string{extension}); err != nil {
 			return "", po, err
 		}
 	}
@@ -828,10 +875,8 @@ func parsePathPresets(parts []string, headers *processingHeaders) (string, *proc
 }
 
 func parsePathBasic(parts []string, headers *processingHeaders) (string, *processingOptions, error) {
-	var err error
-
 	if len(parts) < 6 {
-		return "", nil, errInvalidPath
+		return "", nil, fmt.Errorf("Invalid basic URL format arguments: %s", strings.Join(parts, "/"))
 	}
 
 	po, err := defaultProcessingOptions(headers)
@@ -839,7 +884,7 @@ func parsePathBasic(parts []string, headers *processingHeaders) (string, *proces
 		return "", po, err
 	}
 
-	po.Resize = resizeTypes[parts[0]]
+	po.ResizingType = resizeTypes[parts[0]]
 
 	if err = applyWidthOption(po, parts[1:2]); err != nil {
 		return "", po, err
@@ -878,8 +923,8 @@ func parsePath(ctx context.Context, r *http.Request) (context.Context, error) {
 	}
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 
-	if len(parts) < 3 {
-		return ctx, errInvalidPath
+	if len(parts) < 2 {
+		return ctx, newError(404, fmt.Sprintf("Invalid path: %s", path), msgInvalidURL)
 	}
 
 	if !conf.AllowInsecure {

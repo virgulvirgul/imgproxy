@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const version = "2.6.0"
+const version = "2.7.0"
 
 type ctxKey string
 
@@ -24,6 +24,11 @@ func initialize() {
 	initDownloading()
 	initErrorsReporting()
 	initVips()
+
+	if err := checkPresets(conf.Presets); err != nil {
+		shutdownVips()
+		logFatal(err.Error())
+	}
 }
 
 func main() {

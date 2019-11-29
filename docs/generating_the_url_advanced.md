@@ -38,7 +38,7 @@ resize:%resizing_type:%width:%height:%enlarge:%extend
 rs:%resizing_type:%width:%height:%enlarge:%extend
 ```
 
-Meta-option that defines the [resizing type](#resizing-type), [width](#width), [height](#height), [enlarge](#enlarge), and [extend](#extend). All arguments are optional and can be omited to use their default values.
+Meta-option that defines the [resizing type](#resizing-type), [width](#width), [height](#height), [enlarge](#enlarge), and [extend](#extend). All arguments are optional and can be omitted to use their default values.
 
 #### Size
 
@@ -47,7 +47,7 @@ size:%width:%height:%enlarge:%extend
 s:%width:%height:%enlarge:%extend
 ```
 
-Meta-option that defines the [width](#width), [height](#height), [enlarge](#enlarge), and [extend](#extend). All arguments are optional and can be omited to use their default values.
+Meta-option that defines the [width](#width), [height](#height), [enlarge](#enlarge), and [extend](#extend). All arguments are optional and can be omitted to use their default values.
 
 #### Resizing type
 
@@ -103,9 +103,9 @@ enlarge:%enlarge
 el:%enlarge
 ```
 
-If set to `0`, imgproxy will not enlarge the image if it is smaller than the given size. With any other value, imgproxy will enlarge the image.
+When set to `1`, `t` or `true`, imgproxy will enlarge the image if it is smaller than the given size.
 
-Default: `0`
+Default: false
 
 #### Extend
 
@@ -114,9 +114,9 @@ extend:%extend
 ex:%extend
 ```
 
-If set to `0`, imgproxy will not extend the image if the resizing result is smaller than the given size. With any other value, imgproxy will extend the image to the given size.
+When set to `1`, `t` or `true`, imgproxy will extend the image if it is smaller than the given size.
 
-Default: `0`
+Default: false
 
 #### Gravity
 
@@ -169,6 +169,20 @@ Redefines quality of the resulting image, percentage.
 
 Default: value from the environment variable.
 
+#### Max Bytes
+
+```
+max_bytes:%bytes
+mb:%bytes
+```
+
+When set, imgproxy automatically degrades the quality of the image until the image is under the specified amount of bytes.
+
+**Note:** Applicable only to `jpg`, `webp`, `heic`, and `tiff`.
+**Warning**: When `max_bytes` is set, imgproxy saves image multiple times to achieve specified image size.
+
+Default: 0
+
 #### Background
 
 ```
@@ -192,7 +206,7 @@ adjust:%brightness:%contrast:%saturation
 a:%brightness:%contrast:%saturation
 ```
 
-Meta-option that defines the [brightness](#brightness), [contrast](#contrast), and [saturation](#saturation). All arguments are optional and can be omited to use their default values.
+Meta-option that defines the [brightness](#brightness), [contrast](#contrast), and [saturation](#saturation). All arguments are optional and can be omitted to use their default values.
 
 #### Brightness <img class="pro-badge" src="assets/pro.svg" alt="pro" />
 
@@ -371,7 +385,7 @@ The source URL can be provided as is, prendended by `/plain/` part:
 /plain/http://example.com/images/curiosity.jpg
 ```
 
-**Note:** If the sorce URL contains query string or `@`, you need to escape it.
+**Note:** If the source URL contains query string or `@`, you need to escape it.
 
 When using plain source URL, you can specify the [extension](#extension) after `@`:
 

@@ -64,6 +64,17 @@ Defines how imgproxy will resize the source image. Supported resizing types are:
 
 Default: `fit`
 
+#### Resizing algorithm <img class="pro-badge" src="assets/pro.svg" alt="pro" />
+
+```
+resizing_algorithm:%algorithm
+ra:%algorithm
+```
+
+Defines the algorithm that imgproxy will use for resizing. Supported algorithms are `nearest`, `linear`, `cubic`, `lanczos2`, and `lanczos3`.
+
+Default: `lanczos3`
+
 #### Width
 
 ```
@@ -110,13 +121,14 @@ Default: false
 #### Extend
 
 ```
-extend:%extend
-ex:%extend
+extend:%extend:%gravity
+ex:%extend:%gravity
 ```
 
-When set to `1`, `t` or `true`, imgproxy will extend the image if it is smaller than the given size.
+* When `extend` is set to `1`, `t` or `true`, imgproxy will extend the image if it is smaller than the given size.
+* `gravity` _(optional)_ accepts the same values as [gravity](#gravity) option, except `sm`. When `gravity` is not set, imgproxy will use `ce` gravity without offsets.
 
-Default: false
+Default: `false:ce:0:0`
 
 #### Gravity
 
@@ -156,7 +168,21 @@ c:%width:%height:%gravity
 Defines an area of the image to be processed (crop before resize).
 
 * `width` and `height` define the size of the area. When `width` or `height` is set to `0`, imgproxy will use the full width/height of the source image.
-* `gravity` accepts the same values as [gravity](#gravity) option. When `gravity` is not set, imgproxy will use the value of the [gravity](#gravity) option.
+* `gravity` _(optional)_ accepts the same values as [gravity](#gravity) option. When `gravity` is not set, imgproxy will use the value of the [gravity](#gravity) option.
+
+#### Trim
+
+```
+trim:%threshold
+t:%threshold
+```
+
+Removes surrounding background.
+
+* `threshold` - color similarity tolerance.
+
+**Warning:** Trimming requires an image to be fully loaded into memory. This disables scale-on-load and significantly increases memory usage and processing time. Use it carefully with large images.
+**Note:** Trimming of animated images is not supported.
 
 #### Quality
 
@@ -323,6 +349,33 @@ st:%style
 When set, imgproxy will prepend `<style>` node with provided content to the `<svg>` node of source SVG image. `%style` is url-safe Base64-encoded CSS-style.
 
 Default: blank
+
+#### JPEG options <img class="pro-badge" src="assets/pro.svg" alt="pro" />
+
+```
+jpeg_options:%progressive:%no_subsample:%trellis_quant:%overshoot_deringing:%optimize_scans:%quant_table
+jpgo:%progressive:%no_subsample:%trellis_quant:%overshoot_deringing:%optimize_scans:%quant_table
+```
+
+Allows redefining JPEG saving options. All arguments have the same meaning as [Advanced JPEG compression](configuration.md#advanced-jpeg-compression) configs. All arguments are optional and can be omitted.
+
+#### PNG options <img class="pro-badge" src="assets/pro.svg" alt="pro" />
+
+```
+png_options:%png_interlaced:%png_quantize:%png_quantization_colors
+pngo:%png_interlaced:%png_quantize:%png_quantization_colors
+```
+
+Allows redefining PNG saving options. All arguments have the same meaning as [Advanced PNG compression](configuration.md#advanced-png-compression) configs. All arguments are optional and can be omitted.
+
+#### GIF options <img class="pro-badge" src="assets/pro.svg" alt="pro" />
+
+```
+gif_options:%gif_optimize_frames:%gif_optimize_transparency
+gifo:%gif_optimize_frames:%gif_optimize_transparency
+```
+
+Allows redefining GIF saving options. All arguments have the same meaning as [Advanced GIF compression](configuration.md#advanced-gif-compression) configs. All arguments are optional and can be omitted.
 
 #### Preset
 

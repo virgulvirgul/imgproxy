@@ -36,6 +36,22 @@ func strEnvConfig(s *string, name string) {
 	}
 }
 
+func strSliceEnvConfig(s *[]string, name string) {
+	if env := os.Getenv(name); len(env) > 0 {
+		parts := strings.Split(env, ",")
+
+		for i, p := range parts {
+			parts[i] = strings.TrimSpace(p)
+		}
+
+		*s = parts
+
+		return
+	}
+
+	*s = []string{}
+}
+
 func boolEnvConfig(b *bool, name string) {
 	if env, err := strconv.ParseBool(os.Getenv(name)); err == nil {
 		*b = env
@@ -129,6 +145,7 @@ func presetFileConfig(p presets, filepath string) {
 }
 
 type config struct {
+	Network          string
 	Bind             string
 	ReadTimeout      int
 	WriteTimeout     int
@@ -136,8 +153,11 @@ type config struct {
 	DownloadTimeout  int
 	Concurrency      int
 	MaxClients       int
-	TTL              int
-	SoReuseport      bool
+
+	TTL                     int
+	CacheControlPassthrough bool
+
+	SoReuseport bool
 
 	MaxSrcDimension    int
 	MaxSrcResolution   int
@@ -150,6 +170,7 @@ type config struct {
 	PngQuantizationColors int
 	Quality               int
 	GZipCompression       int
+	StripMetadata         bool
 
 	EnableWebpDetection bool
 	EnforceWebp         bool
@@ -172,6 +193,7 @@ type config struct {
 	IgnoreSslVerification bool
 	DevelopmentErrorsMode bool
 
+	AllowedSources      []string
 	LocalFileSystemRoot string
 	S3Enabled           bool
 	S3Region            string
@@ -213,6 +235,7 @@ type config struct {
 }
 
 var conf = config{
+	Network:                        "tcp",
 	Bind:                           ":8080",
 	ReadTimeout:                    10,
 	WriteTimeout:                   10,
@@ -225,6 +248,7 @@ var conf = config{
 	SignatureSize:                  32,
 	PngQuantizationColors:          256,
 	Quality:                        80,
+	StripMetadata:                  true,
 	UserAgent:                      fmt.Sprintf("imgproxy/%s", version),
 	Presets:                        make(presets),
 	WatermarkOpacity:               1,
@@ -253,6 +277,7 @@ func configure() {
 		conf.Bind = fmt.Sprintf(":%s", port)
 	}
 
+	strEnvConfig(&conf.Network, "IMGPROXY_NETWORK")
 	strEnvConfig(&conf.Bind, "IMGPROXY_BIND")
 	intEnvConfig(&conf.ReadTimeout, "IMGPROXY_READ_TIMEOUT")
 	intEnvConfig(&conf.WriteTimeout, "IMGPROXY_WRITE_TIMEOUT")
@@ -262,6 +287,7 @@ func configure() {
 	intEnvConfig(&conf.MaxClients, "IMGPROXY_MAX_CLIENTS")
 
 	intEnvConfig(&conf.TTL, "IMGPROXY_TTL")
+	boolEnvConfig(&conf.CacheControlPassthrough, "IMGPROXY_CACHE_CONTROL_PASSTHROUGH")
 
 	boolEnvConfig(&conf.SoReuseport, "IMGPROXY_SO_REUSEPORT")
 
@@ -275,12 +301,15 @@ func configure() {
 	}
 	intEnvConfig(&conf.MaxAnimationFrames, "IMGPROXY_MAX_ANIMATION_FRAMES")
 
+	strSliceEnvConfig(&conf.AllowedSources, "IMGPROXY_ALLOWED_SOURCES")
+
 	boolEnvConfig(&conf.JpegProgressive, "IMGPROXY_JPEG_PROGRESSIVE")
 	boolEnvConfig(&conf.PngInterlaced, "IMGPROXY_PNG_INTERLACED")
 	boolEnvConfig(&conf.PngQuantize, "IMGPROXY_PNG_QUANTIZE")
 	intEnvConfig(&conf.PngQuantizationColors, "IMGPROXY_PNG_QUANTIZATION_COLORS")
 	intEnvConfig(&conf.Quality, "IMGPROXY_QUALITY")
 	intEnvConfig(&conf.GZipCompression, "IMGPROXY_GZIP_COMPRESSION")
+	boolEnvConfig(&conf.StripMetadata, "IMGPROXY_STRIP_METADATA")
 
 	boolEnvConfig(&conf.EnableWebpDetection, "IMGPROXY_ENABLE_WEBP_DETECTION")
 	boolEnvConfig(&conf.EnforceWebp, "IMGPROXY_ENFORCE_WEBP")

@@ -2,11 +2,42 @@
 
 ## [Unreleased]
 ### Added
+- `IMGPROXY_NETWORK` config. Allows to bind on Unix socket.
+- `IMGPROXY_CACHE_CONTROL_PASSTHROUGH` config.
+- `imgproxy health` command.
+- (pro) `IMGPROXY_GIF_OPTIMIZE_FRAMES` & `IMGPROXY_GIF_OPTIMIZE_TRANSPARENCY` configs and `gif_options` processing option.
+
+### Fixed
+- Fix detection of SVG starting with a comment.
+
+## [2.9.0] - 2020-01-30
+### Added
+- `trim` processing option.
+- `IMGPROXY_STRIP_METADATA` config.
+
+### Fixed
+- Fixed focus point crop calculation.
+
+## [2.8.2] - 2020-01-13
+### Changed
+- Optimized memory usage.
+
+### Fixed
+- Fixed `IMGPROXY_ALLOWED_SOURCES` config.
+
+## [2.8.1] - 2019-12-27
+### Fixed
+- Fix watermark top offset calculation.
+
+## [2.8.0] - 2019-12-25
+### Added
 - `IMGPROXY_LOG_LEVEL` config.
 - `max_bytes` processing option.
+- `IMGPROXY_ALLOWED_SOURCES` config.
 
 ### Changed
 - Docker image base is changed to Debian 10 for better stability and performance.
+- `extend` option now supports gravity.
 
 ## [2.7.0] - 2019-11-13
 ### Changed

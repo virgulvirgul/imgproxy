@@ -5,12 +5,11 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
-	"runtime/debug"
 	"syscall"
 	"time"
 )
 
-const version = "2.7.0"
+const version = "2.9.0"
 
 type ctxKey string
 
@@ -32,13 +31,18 @@ func initialize() {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "health" {
+		healthcheck()
+	}
+
 	initialize()
+	defer shutdownVips()
 
 	go func() {
 		var logMemStats = len(os.Getenv("IMGPROXY_LOG_MEM_STATS")) > 0
 
 		for range time.Tick(time.Duration(conf.FreeMemoryInterval) * time.Second) {
-			debug.FreeOSMemory()
+			freeMemory()
 
 			if logMemStats {
 				var m runtime.MemStats
@@ -49,12 +53,10 @@ func main() {
 	}()
 
 	s := startServer()
+	defer shutdownServer(s)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
 	<-stop
-
-	shutdownServer(s)
-	shutdownVips()
 }

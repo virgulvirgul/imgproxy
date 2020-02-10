@@ -10,12 +10,15 @@ import (
 	"net/http"
 	"time"
 
-	imagesize "github.com/imgproxy/imgproxy/image_size"
+	"github.com/imgproxy/imgproxy/imagemeta"
 )
 
 var (
-	downloadClient  *http.Client
-	imageDataCtxKey = ctxKey("imageData")
+	downloadClient *http.Client
+
+	imageDataCtxKey          = ctxKey("imageData")
+	cacheControlHeaderCtxKey = ctxKey("cacheControlHeader")
+	expiresHeaderCtxKey      = ctxKey("expiresHeader")
 
 	errSourceDimensionsTooBig      = newError(422, "Source image dimensions are too big", "Invalid source image")
 	errSourceResolutionTooBig      = newError(422, "Source image resolution is too big", "Invalid source image")
@@ -102,20 +105,20 @@ func checkDimensions(width, height int) error {
 }
 
 func checkTypeAndDimensions(r io.Reader) (imageType, error) {
-	meta, err := imagesize.DecodeMeta(r)
-	if err == imagesize.ErrFormat {
+	meta, err := imagemeta.DecodeMeta(r)
+	if err == imagemeta.ErrFormat {
 		return imageTypeUnknown, errSourceImageTypeNotSupported
 	}
 	if err != nil {
 		return imageTypeUnknown, newUnexpectedError(err.Error(), 0)
 	}
 
-	imgtype, imgtypeOk := imageTypes[meta.Format]
+	imgtype, imgtypeOk := imageTypes[meta.Format()]
 	if !imgtypeOk || !imageTypeLoadSupport(imgtype) {
 		return imageTypeUnknown, errSourceImageTypeNotSupported
 	}
 
-	if err = checkDimensions(meta.Width, meta.Height); err != nil {
+	if err = checkDimensions(meta.Width(), meta.Height()); err != nil {
 		return imageTypeUnknown, err
 	}
 
@@ -196,10 +199,22 @@ func downloadImage(ctx context.Context) (context.Context, context.CancelFunc, er
 	}
 
 	ctx = context.WithValue(ctx, imageDataCtxKey, imgdata)
+	ctx = context.WithValue(ctx, cacheControlHeaderCtxKey, res.Header.Get("Cache-Control"))
+	ctx = context.WithValue(ctx, expiresHeaderCtxKey, res.Header.Get("Expires"))
 
 	return ctx, imgdata.Close, err
 }
 
 func getImageData(ctx context.Context) *imageData {
 	return ctx.Value(imageDataCtxKey).(*imageData)
+}
+
+func getCacheControlHeader(ctx context.Context) string {
+	str, _ := ctx.Value(cacheControlHeaderCtxKey).(string)
+	return str
+}
+
+func getExpiresHeader(ctx context.Context) string {
+	str, _ := ctx.Value(expiresHeaderCtxKey).(string)
+	return str
 }

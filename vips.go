@@ -130,6 +130,13 @@ func vipsLoadWatermark() (err error) {
 	return
 }
 
+func gbool(b bool) C.gboolean {
+	if b {
+		return C.gboolean(1)
+	}
+	return C.gboolean(0)
+}
+
 func (img *vipsImage) Width() int {
 	return int(img.VipsImage.Xsize)
 }
@@ -170,7 +177,7 @@ func (img *vipsImage) Load(data []byte, imgtype imageType, shrink int, scale flo
 	return nil
 }
 
-func (img *vipsImage) Save(imgtype imageType, quality int) ([]byte, context.CancelFunc, error) {
+func (img *vipsImage) Save(imgtype imageType, quality int, stripMeta bool) ([]byte, context.CancelFunc, error) {
 	var ptr unsafe.Pointer
 
 	cancel := func() {
@@ -183,11 +190,11 @@ func (img *vipsImage) Save(imgtype imageType, quality int) ([]byte, context.Canc
 
 	switch imgtype {
 	case imageTypeJPEG:
-		err = C.vips_jpegsave_go(img.VipsImage, &ptr, &imgsize, C.int(quality), vipsConf.JpegProgressive)
+		err = C.vips_jpegsave_go(img.VipsImage, &ptr, &imgsize, C.int(quality), vipsConf.JpegProgressive, gbool(stripMeta))
 	case imageTypePNG:
 		err = C.vips_pngsave_go(img.VipsImage, &ptr, &imgsize, vipsConf.PngInterlaced, vipsConf.PngQuantize, vipsConf.PngQuantizationColors)
 	case imageTypeWEBP:
-		err = C.vips_webpsave_go(img.VipsImage, &ptr, &imgsize, C.int(quality))
+		err = C.vips_webpsave_go(img.VipsImage, &ptr, &imgsize, C.int(quality), gbool(stripMeta))
 	case imageTypeGIF:
 		err = C.vips_gifsave_go(img.VipsImage, &ptr, &imgsize)
 	case imageTypeICO:
@@ -312,6 +319,8 @@ func (img *vipsImage) Rotate(angle int) error {
 		return vipsError()
 	}
 
+	C.vips_autorot_remove_angle(tmp)
+
 	C.swap_and_clear(&img.VipsImage, tmp)
 	return nil
 }
@@ -349,6 +358,21 @@ func (img *vipsImage) SmartCrop(width, height int) error {
 	var tmp *C.VipsImage
 
 	if C.vips_smartcrop_go(img.VipsImage, &tmp, C.int(width), C.int(height)) != 0 {
+		return vipsError()
+	}
+
+	C.swap_and_clear(&img.VipsImage, tmp)
+	return nil
+}
+
+func (img *vipsImage) Trim(threshold float64) error {
+	var tmp *C.VipsImage
+
+	if err := img.CopyMemory(); err != nil {
+		return err
+	}
+
+	if C.vips_trim(img.VipsImage, &tmp, C.double(threshold)) != 0 {
 		return vipsError()
 	}
 
@@ -489,41 +513,7 @@ func (img *vipsImage) Replicate(width, height int) error {
 	return nil
 }
 
-func (img *vipsImage) Embed(gravity gravityType, width, height int, offX, offY int, bg rgbColor) error {
-	wmWidth := img.Width()
-	wmHeight := img.Height()
-
-	left := (width-wmWidth+1)/2 + offX
-	top := (height-wmHeight+1)/2 + offY
-
-	if gravity == gravityNorth || gravity == gravityNorthEast || gravity == gravityNorthWest {
-		top = offY
-	}
-
-	if gravity == gravityEast || gravity == gravityNorthEast || gravity == gravitySouthEast {
-		left = width - wmWidth - offX
-	}
-
-	if gravity == gravitySouth || gravity == gravitySouthEast || gravity == gravitySouthWest {
-		top = height - wmHeight - offY
-	}
-
-	if gravity == gravityWest || gravity == gravityNorthWest || gravity == gravitySouthWest {
-		left = offX
-	}
-
-	if left > width {
-		left = width - wmWidth
-	} else if left < -wmWidth {
-		left = 0
-	}
-
-	if top > height {
-		top = height - wmHeight
-	} else if top < -wmHeight {
-		top = 0
-	}
-
+func (img *vipsImage) Embed(width, height int, offX, offY int, bg rgbColor) error {
 	if err := img.RgbColourspace(); err != nil {
 		return err
 	}
@@ -536,7 +526,7 @@ func (img *vipsImage) Embed(gravity gravityType, width, height int, offX, offY i
 	}
 
 	var tmp *C.VipsImage
-	if C.vips_embed_go(img.VipsImage, &tmp, C.int(left), C.int(top), C.int(width), C.int(height), &bgc[0], C.int(len(bgc))) != 0 {
+	if C.vips_embed_go(img.VipsImage, &tmp, C.int(offX), C.int(offY), C.int(width), C.int(height), &bgc[0], C.int(len(bgc))) != 0 {
 		return vipsError()
 	}
 	C.swap_and_clear(&img.VipsImage, tmp)

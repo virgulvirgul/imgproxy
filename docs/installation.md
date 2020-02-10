@@ -14,9 +14,25 @@ docker run -p 8080:8080 -it darthsim/imgproxy
 You can also build your own image. imgproxy is ready to be dockerized, plug and play:
 
 ```bash
-docker build -t imgproxy .
+docker build -f docker/Dockerfile -t imgproxy .
 docker run -p 8080:8080 -it imgproxy
 ```
+
+## Helm
+
+imgproxy can be easily deployed to your Kubernetes cluster using Helm and our official Helm chart:
+
+```bash
+helm repo add imgproxy https://helm.imgproxy.net/
+
+# With Helm 3
+helm upgrade -i imgproxy imgproxy/imgproxy
+
+# With Helm 2
+helm upgrade -i --name imgproxy imgproxy/imgproxy
+```
+
+Read the [chart's README](https://github.com/imgproxy/imgproxy-helm) for more info.
 
 ## Heroku
 
@@ -38,6 +54,13 @@ git push heroku master
 ### Arch Linux and derivatives
 
 [imgproxy](https://aur.archlinux.org/packages/imgproxy/) package is available from AUR.
+
+### macOS + Homebrew
+
+[imgproxy](https://formulae.brew.sh/formula/imgproxy) is available from Homebrew:
+```bash
+brew install imgproxy
+```
 
 ## From the source
 

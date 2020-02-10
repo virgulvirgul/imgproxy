@@ -25,13 +25,14 @@ func buildRouter() *router {
 	r.GET("/health", handleHealth, true)
 	r.GET("/favicon.ico", handleFavicon, true)
 	r.GET("/", withCORS(withSecret(handleProcessing)), false)
-	r.OPTIONS("/", withCORS(handleOptions), false)
+	r.HEAD("/", withCORS(handleHead), false)
+	r.OPTIONS("/", withCORS(handleHead), false)
 
 	return r
 }
 
 func startServer() *http.Server {
-	l, err := listenReuseport("tcp", conf.Bind)
+	l, err := listenReuseport(conf.Network, conf.Bind)
 	if err != nil {
 		logFatal(err.Error())
 	}
@@ -128,7 +129,7 @@ func handleHealth(reqID string, rw http.ResponseWriter, r *http.Request) {
 	rw.Write(imgproxyIsRunningMsg)
 }
 
-func handleOptions(reqID string, rw http.ResponseWriter, r *http.Request) {
+func handleHead(reqID string, rw http.ResponseWriter, r *http.Request) {
 	logResponse(reqID, r, 200, nil, nil, nil)
 	rw.WriteHeader(200)
 }

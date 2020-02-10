@@ -66,6 +66,7 @@ int vips_flip_horizontal_go(VipsImage *in, VipsImage **out);
 
 int vips_extract_area_go(VipsImage *in, VipsImage **out, int left, int top, int width, int height);
 int vips_smartcrop_go(VipsImage *in, VipsImage **out, int width, int height);
+int vips_trim(VipsImage *in, VipsImage **out, double threshold);
 
 int vips_gaussblur_go(VipsImage *in, VipsImage **out, double sigma);
 int vips_sharpen_go(VipsImage *in, VipsImage **out, double sigma);
@@ -81,9 +82,9 @@ int vips_apply_watermark(VipsImage *in, VipsImage *watermark, VipsImage **out, d
 
 int vips_arrayjoin_go(VipsImage **in, VipsImage **out, int n);
 
-int vips_jpegsave_go(VipsImage *in, void **buf, size_t *len, int quality, int interlace);
+int vips_jpegsave_go(VipsImage *in, void **buf, size_t *len, int quality, int interlace, gboolean strip);
 int vips_pngsave_go(VipsImage *in, void **buf, size_t *len, int interlace, int quantize, int colors);
-int vips_webpsave_go(VipsImage *in, void **buf, size_t *len, int quality);
+int vips_webpsave_go(VipsImage *in, void **buf, size_t *len, int quality, gboolean strip);
 int vips_gifsave_go(VipsImage *in, void **buf, size_t *len);
 int vips_icosave_go(VipsImage *in, void **buf, size_t *len);
 int vips_heifsave_go(VipsImage *in, void **buf, size_t *len, int quality);

@@ -26,13 +26,20 @@
   --copycode-background: var(--link-color);
 }
 
-.content {
+.app-name-link img {
+  width: 90%
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  width: 100%;
+  height: 500px;
   background: linear-gradient(
     180deg,
     var(--base-background-color-trans),
     var(--base-background-color) 500px
   ), url('/assets/pattern.svg');
-  background-attachment: fixed;
 }
 
 @media (min-width: 1200px) {
@@ -108,4 +115,9 @@
 
 .github-corner {
   position: fixed;
+}
+
+.gitter img {
+  display: block;
+  margin: 5px auto 0;
 }

@@ -1,31 +1,31 @@
-module github.com/imgproxy/imgproxy
+module github.com/imgproxy/imgproxy/v2
 
-go 1.11
+go 1.13
 
 require (
-	cloud.google.com/go/storage v1.5.0
-	github.com/StackExchange/wmi v0.0.0-20180116203802-5d049714c4a6 // indirect
-	github.com/aws/aws-sdk-go v1.28.9
-	github.com/bitly/go-simplejson v0.5.0 // indirect
-	github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869 // indirect
-	github.com/bugsnag/bugsnag-go v1.5.3
-	github.com/bugsnag/panicwrap v1.2.0 // indirect
-	github.com/getsentry/sentry-go v0.4.0
-	github.com/go-ole/go-ole v1.2.2 // indirect
-	github.com/gofrs/uuid v3.2.0+incompatible // indirect
-	github.com/google/uuid v1.1.0 // indirect
+	cloud.google.com/go/storage v1.15.0
+	github.com/Azure/azure-storage-blob-go v0.13.0
+	github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d // indirect
+	github.com/airbrake/gobrake/v5 v5.0.3
+	github.com/aws/aws-sdk-go v1.38.40
+	github.com/benesch/cgosymbolizer v0.0.0-20190515212042-bec6fe6e597b
+	github.com/bugsnag/bugsnag-go/v2 v2.1.1
+	github.com/getsentry/sentry-go v0.10.0
+	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/honeybadger-io/honeybadger-go v0.5.0
-	github.com/kardianos/osext v0.0.0-20170510131534-ae77be60afb1 // indirect
-	github.com/matoous/go-nanoid v0.0.0-20181114085210-eab626deece6
-	github.com/newrelic/go-agent v2.16.3+incompatible
-	github.com/prometheus/client_golang v0.9.4
-	github.com/sirupsen/logrus v1.4.2
-	github.com/stretchr/testify v1.4.0
-	golang.org/x/image v0.0.0-20190802002840-cff245a6509b
-	golang.org/x/net v0.0.0-20191209160850-c0dbc17a3553
-	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
-	golang.org/x/sys v0.0.0-20191228213918-04cbcbbfeed8
-	google.golang.org/api v0.15.0
+	github.com/ianlancetaylor/cgosymbolizer v0.0.0-20201204192058-7acc97e53614 // indirect
+	github.com/matoous/go-nanoid/v2 v2.0.0
+	github.com/newrelic/go-agent/v3 v3.12.0
+	github.com/prometheus/client_golang v1.10.0
+	github.com/sirupsen/logrus v1.8.1
+	github.com/stretchr/testify v1.7.0
+	golang.org/x/image v0.0.0-20201208152932-35266b937fa6
+	golang.org/x/net v0.0.0-20210503060351-7fd8e65b6420
+	golang.org/x/sys v0.0.0-20210503080704-8803ae5d1324
+	golang.org/x/text v0.3.6
+	google.golang.org/api v0.46.0
 )
 
 replace git.apache.org/thrift.git => github.com/apache/thrift v0.0.0-20180902110319-2566ecd5d999
+
+replace github.com/shirou/gopsutil => github.com/shirou/gopsutil v2.20.9+incompatible

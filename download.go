@@ -1,6 +1,7 @@
 package main
 
 import (
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -10,7 +11,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/imgproxy/imgproxy/imagemeta"
+	"github.com/imgproxy/imgproxy/v2/imagemeta"
 )
 
 var (
@@ -30,19 +31,6 @@ const msgSourceImageIsUnreachable = "Source image is unreachable"
 
 var downloadBufPool *bufPool
 
-type imageData struct {
-	Data []byte
-	Type imageType
-
-	cancel context.CancelFunc
-}
-
-func (d *imageData) Close() {
-	if d.cancel != nil {
-		d.cancel()
-	}
-}
-
 type limitReader struct {
 	r    io.Reader
 	left int
@@ -59,13 +47,13 @@ func (lr *limitReader) Read(p []byte) (n int, err error) {
 	return
 }
 
-func initDownloading() {
+func initDownloading() error {
 	transport := &http.Transport{
 		Proxy:               http.ProxyFromEnvironment,
 		MaxIdleConns:        conf.Concurrency,
 		MaxIdleConnsPerHost: conf.Concurrency,
 		DisableCompression:  true,
-		Dial:                (&net.Dialer{KeepAlive: 600 * time.Second}).Dial,
+		DialContext:         (&net.Dialer{KeepAlive: 600 * time.Second}).DialContext,
 	}
 
 	if conf.IgnoreSslVerification {
@@ -77,11 +65,27 @@ func initDownloading() {
 	}
 
 	if conf.S3Enabled {
-		transport.RegisterProtocol("s3", newS3Transport())
+		if t, err := newS3Transport(); err != nil {
+			return err
+		} else {
+			transport.RegisterProtocol("s3", t)
+		}
 	}
 
 	if conf.GCSEnabled {
-		transport.RegisterProtocol("gs", newGCSTransport())
+		if t, err := newGCSTransport(); err != nil {
+			return err
+		} else {
+			transport.RegisterProtocol("gs", t)
+		}
+	}
+
+	if conf.ABSEnabled {
+		if t, err := newAzureTransport(); err != nil {
+			return err
+		} else {
+			transport.RegisterProtocol("abs", t)
+		}
 	}
 
 	downloadClient = &http.Client{
@@ -90,6 +94,10 @@ func initDownloading() {
 	}
 
 	downloadBufPool = newBufPool("download", conf.Concurrency, conf.DownloadBufferSize)
+
+	imagemeta.SetMaxSvgCheckRead(conf.MaxSvgCheckBytes)
+
+	return nil
 }
 
 func checkDimensions(width, height int) error {
@@ -193,7 +201,22 @@ func downloadImage(ctx context.Context) (context.Context, context.CancelFunc, er
 		return ctx, func() {}, err
 	}
 
-	imgdata, err := readAndCheckImage(res.Body, int(res.ContentLength))
+	body := res.Body
+	contentLength := int(res.ContentLength)
+
+	if res.Header.Get("Content-Encoding") == "gzip" {
+		gzipBody, errGzip := gzip.NewReader(res.Body)
+		if gzipBody != nil {
+			defer gzipBody.Close()
+		}
+		if errGzip != nil {
+			return ctx, func() {}, err
+		}
+		body = gzipBody
+		contentLength = 0
+	}
+
+	imgdata, err := readAndCheckImage(body, contentLength)
 	if err != nil {
 		return ctx, func() {}, err
 	}

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/imgproxy/imgproxy/structdiff"
+	"github.com/imgproxy/imgproxy/v2/structdiff"
 )
 
 type urlOption struct {
@@ -95,14 +95,26 @@ type extendOptions struct {
 }
 
 type cropOptions struct {
-	Width   int
-	Height  int
+	Width   float64
+	Height  float64
 	Gravity gravityOptions
+}
+
+type paddingOptions struct {
+	Enabled bool
+	Top     int
+	Right   int
+	Bottom  int
+	Left    int
 }
 
 type trimOptions struct {
 	Enabled   bool
 	Threshold float64
+	Smart     bool
+	Color     rgbColor
+	EqualHor  bool
+	EqualVer  bool
 }
 
 type watermarkOptions struct {
@@ -114,22 +126,27 @@ type watermarkOptions struct {
 }
 
 type processingOptions struct {
-	ResizingType resizeType
-	Width        int
-	Height       int
-	Dpr          float64
-	Gravity      gravityOptions
-	Enlarge      bool
-	Extend       extendOptions
-	Crop         cropOptions
-	Trim         trimOptions
-	Format       imageType
-	Quality      int
-	MaxBytes     int
-	Flatten      bool
-	Background   rgbColor
-	Blur         float32
-	Sharpen      float32
+	ResizingType      resizeType
+	Width             int
+	Height            int
+	Dpr               float64
+	Gravity           gravityOptions
+	Enlarge           bool
+	Extend            extendOptions
+	Crop              cropOptions
+	Padding           paddingOptions
+	Trim              trimOptions
+	Rotate            int
+	Format            imageType
+	Quality           int
+	MaxBytes          int
+	Flatten           bool
+	Background        rgbColor
+	Blur              float32
+	Sharpen           float32
+	StripMetadata     bool
+	StripColorProfile bool
+	AutoRotate        bool
 
 	CacheBuster string
 
@@ -137,6 +154,8 @@ type processingOptions struct {
 
 	PreferWebP  bool
 	EnforceWebP bool
+	PreferAvif  bool
+	EnforceAvif bool
 
 	Filename string
 
@@ -198,21 +217,26 @@ var (
 func newProcessingOptions() *processingOptions {
 	newProcessingOptionsOnce.Do(func() {
 		_newProcessingOptions = processingOptions{
-			ResizingType: resizeFit,
-			Width:        0,
-			Height:       0,
-			Gravity:      gravityOptions{Type: gravityCenter},
-			Enlarge:      false,
-			Extend:       extendOptions{Enabled: false, Gravity: gravityOptions{Type: gravityCenter}},
-			Trim:         trimOptions{Enabled: false, Threshold: 10},
-			Quality:      conf.Quality,
-			MaxBytes:     0,
-			Format:       imageTypeUnknown,
-			Background:   rgbColor{255, 255, 255},
-			Blur:         0,
-			Sharpen:      0,
-			Dpr:          1,
-			Watermark:    watermarkOptions{Opacity: 1, Replicate: false, Gravity: gravityOptions{Type: gravityCenter}},
+			ResizingType:      resizeFit,
+			Width:             0,
+			Height:            0,
+			Gravity:           gravityOptions{Type: gravityCenter},
+			Enlarge:           false,
+			Extend:            extendOptions{Enabled: false, Gravity: gravityOptions{Type: gravityCenter}},
+			Padding:           paddingOptions{Enabled: false},
+			Trim:              trimOptions{Enabled: false, Threshold: 10, Smart: true},
+			Rotate:            0,
+			Quality:           0,
+			MaxBytes:          0,
+			Format:            imageTypeUnknown,
+			Background:        rgbColor{255, 255, 255},
+			Blur:              0,
+			Sharpen:           0,
+			Dpr:               1,
+			Watermark:         watermarkOptions{Opacity: 1, Replicate: false, Gravity: gravityOptions{Type: gravityCenter}},
+			StripMetadata:     conf.StripMetadata,
+			StripColorProfile: conf.StripColorProfile,
+			AutoRotate:        conf.AutoRotate,
 		}
 	})
 
@@ -220,6 +244,20 @@ func newProcessingOptions() *processingOptions {
 	po.UsedPresets = make([]string, 0, len(conf.Presets))
 
 	return &po
+}
+
+func (po *processingOptions) getQuality() int {
+	q := po.Quality
+
+	if q == 0 {
+		q = conf.FormatQuality[po.Format]
+	}
+
+	if q == 0 {
+		q = conf.Quality
+	}
+
+	return q
 }
 
 func (po *processingOptions) isPresetUsed(name string) bool {
@@ -535,13 +573,17 @@ func applyCropOption(po *processingOptions, args []string) error {
 		return fmt.Errorf("Invalid crop arguments: %v", args)
 	}
 
-	if err := parseDimension(&po.Crop.Width, "crop width", args[0]); err != nil {
-		return err
+	if w, err := strconv.ParseFloat(args[0], 64); err == nil && w >= 0 {
+		po.Crop.Width = w
+	} else {
+		return fmt.Errorf("Invalid crop width: %s", args[0])
 	}
 
 	if len(args) > 1 {
-		if err := parseDimension(&po.Crop.Height, "crop height", args[1]); err != nil {
-			return err
+		if h, err := strconv.ParseFloat(args[1], 64); err == nil && h >= 0 {
+			po.Crop.Height = h
+		} else {
+			return fmt.Errorf("Invalid crop height: %s", args[1])
 		}
 	}
 
@@ -552,16 +594,93 @@ func applyCropOption(po *processingOptions, args []string) error {
 	return nil
 }
 
+func applyPaddingOption(po *processingOptions, args []string) error {
+	nArgs := len(args)
+
+	if nArgs < 1 || nArgs > 4 {
+		return fmt.Errorf("Invalid padding arguments: %v", args)
+	}
+
+	po.Padding.Enabled = true
+
+	if nArgs > 0 && len(args[0]) > 0 {
+		if err := parseDimension(&po.Padding.Top, "padding top (+all)", args[0]); err != nil {
+			return err
+		}
+		po.Padding.Right = po.Padding.Top
+		po.Padding.Bottom = po.Padding.Top
+		po.Padding.Left = po.Padding.Top
+	}
+
+	if nArgs > 1 && len(args[1]) > 0 {
+		if err := parseDimension(&po.Padding.Right, "padding right (+left)", args[1]); err != nil {
+			return err
+		}
+		po.Padding.Left = po.Padding.Right
+	}
+
+	if nArgs > 2 && len(args[2]) > 0 {
+		if err := parseDimension(&po.Padding.Bottom, "padding bottom", args[2]); err != nil {
+			return err
+		}
+	}
+
+	if nArgs > 3 && len(args[3]) > 0 {
+		if err := parseDimension(&po.Padding.Left, "padding left", args[3]); err != nil {
+			return err
+		}
+	}
+
+	if po.Padding.Top == 0 && po.Padding.Right == 0 && po.Padding.Bottom == 0 && po.Padding.Left == 0 {
+		po.Padding.Enabled = false
+	}
+
+	return nil
+}
+
 func applyTrimOption(po *processingOptions, args []string) error {
-	if len(args) > 1 {
-		return fmt.Errorf("Invalid crop arguments: %v", args)
+	nArgs := len(args)
+
+	if nArgs > 4 {
+		return fmt.Errorf("Invalid trim arguments: %v", args)
 	}
 
 	if t, err := strconv.ParseFloat(args[0], 64); err == nil && t >= 0 {
 		po.Trim.Enabled = true
 		po.Trim.Threshold = t
 	} else {
-		return fmt.Errorf("Invalid trim treshold: %s", args[0])
+		return fmt.Errorf("Invalid trim threshold: %s", args[0])
+	}
+
+	if nArgs > 1 && len(args[1]) > 0 {
+		if c, err := colorFromHex(args[1]); err == nil {
+			po.Trim.Color = c
+			po.Trim.Smart = false
+		} else {
+			return fmt.Errorf("Invalid trim color: %s", args[1])
+		}
+	}
+
+	if nArgs > 2 && len(args[2]) > 0 {
+		po.Trim.EqualHor = parseBoolOption(args[2])
+	}
+
+	if nArgs > 3 && len(args[3]) > 0 {
+		po.Trim.EqualVer = parseBoolOption(args[3])
+	}
+
+	return nil
+}
+
+func applyRotateOption(po *processingOptions, args []string) error {
+	if len(args) > 1 {
+		return fmt.Errorf("Invalid rotate arguments: %v", args)
+	}
+
+	if r, err := strconv.Atoi(args[0]); err == nil && r%90 == 0 {
+		po.Rotate = r
+	} else {
+		return fmt.Errorf("Invalid rotation angle: %s", args[0])
 	}
 
 	return nil
@@ -572,7 +691,7 @@ func applyQualityOption(po *processingOptions, args []string) error {
 		return fmt.Errorf("Invalid quality arguments: %v", args)
 	}
 
-	if q, err := strconv.Atoi(args[0]); err == nil && q > 0 && q <= 100 {
+	if q, err := strconv.Atoi(args[0]); err == nil && q >= 0 && q <= 100 {
 		po.Quality = q
 	} else {
 		return fmt.Errorf("Invalid quality: %s", args[0])
@@ -771,6 +890,36 @@ func applyFilenameOption(po *processingOptions, args []string) error {
 	return nil
 }
 
+func applyStripMetadataOption(po *processingOptions, args []string) error {
+	if len(args) > 1 {
+		return fmt.Errorf("Invalid strip metadata arguments: %v", args)
+	}
+
+	po.StripMetadata = parseBoolOption(args[0])
+
+	return nil
+}
+
+func applyStripColorProfileOption(po *processingOptions, args []string) error {
+	if len(args) > 1 {
+		return fmt.Errorf("Invalid strip color profile arguments: %v", args)
+	}
+
+	po.StripColorProfile = parseBoolOption(args[0])
+
+	return nil
+}
+
+func applyAutoRotateOption(po *processingOptions, args []string) error {
+	if len(args) > 1 {
+		return fmt.Errorf("Invalid auto rotate arguments: %v", args)
+	}
+
+	po.AutoRotate = parseBoolOption(args[0])
+
+	return nil
+}
+
 func applyProcessingOption(po *processingOptions, name string, args []string) error {
 	switch name {
 	case "format", "f", "ext":
@@ -797,6 +946,10 @@ func applyProcessingOption(po *processingOptions, name string, args []string) er
 		return applyCropOption(po, args)
 	case "trim", "t":
 		return applyTrimOption(po, args)
+	case "rotate", "rot":
+		return applyRotateOption(po, args)
+	case "padding", "pd":
+		return applyPaddingOption(po, args)
 	case "quality", "q":
 		return applyQualityOption(po, args)
 	case "max_bytes", "mb":
@@ -813,6 +966,12 @@ func applyProcessingOption(po *processingOptions, name string, args []string) er
 		return applyPresetOption(po, args)
 	case "cachebuster", "cb":
 		return applyCacheBusterOption(po, args)
+	case "strip_metadata", "sm":
+		return applyStripMetadataOption(po, args)
+	case "strip_color_profile", "scp":
+		return applyStripColorProfileOption(po, args)
+	case "auto_rotate", "ar":
+		return applyAutoRotateOption(po, args)
 	case "filename", "fn":
 		return applyFilenameOption(po, args)
 	}
@@ -874,6 +1033,11 @@ func defaultProcessingOptions(headers *processingHeaders) (*processingOptions, e
 	if strings.Contains(headers.Accept, "image/webp") {
 		po.PreferWebP = conf.EnableWebpDetection || conf.EnforceWebp
 		po.EnforceWebP = conf.EnforceWebp
+	}
+
+	if strings.Contains(headers.Accept, "image/avif") {
+		po.PreferAvif = conf.EnableAvifDetection || conf.EnforceAvif
+		po.EnforceAvif = conf.EnforceAvif
 	}
 
 	if conf.EnableClientHints && len(headers.ViewportWidth) > 0 {
@@ -996,18 +1160,24 @@ func parsePathBasic(parts []string, headers *processingHeaders) (string, *proces
 }
 
 func parsePath(ctx context.Context, r *http.Request) (context.Context, error) {
-	path := r.URL.RawPath
-	if len(path) == 0 {
-		path = r.URL.Path
+	var err error
+
+	path := trimAfter(r.RequestURI, '?')
+
+	if len(conf.PathPrefix) > 0 {
+		path = strings.TrimPrefix(path, conf.PathPrefix)
 	}
-	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+
+	path = strings.TrimPrefix(path, "/")
+
+	parts := strings.Split(path, "/")
 
 	if len(parts) < 2 {
 		return ctx, newError(404, fmt.Sprintf("Invalid path: %s", path), msgInvalidURL)
 	}
 
 	if !conf.AllowInsecure {
-		if err := validatePath(parts[0], strings.TrimPrefix(path, fmt.Sprintf("/%s", parts[0]))); err != nil {
+		if err = validatePath(parts[0], strings.TrimPrefix(path, parts[0])); err != nil {
 			return ctx, newError(403, err.Error(), msgForbidden)
 		}
 	}
@@ -1021,7 +1191,6 @@ func parsePath(ctx context.Context, r *http.Request) (context.Context, error) {
 
 	var imageURL string
 	var po *processingOptions
-	var err error
 
 	if conf.OnlyPresets {
 		imageURL, po, err = parsePathPresets(parts[1:], headers)
@@ -1036,7 +1205,7 @@ func parsePath(ctx context.Context, r *http.Request) (context.Context, error) {
 	}
 
 	if !isAllowedSource(imageURL) {
-		return ctx, newError(404, fmt.Sprintf("Invalid source"), msgInvalidSource)
+		return ctx, newError(404, "Invalid source", msgInvalidSource)
 	}
 
 	ctx = context.WithValue(ctx, imageURLCtxKey, imageURL)

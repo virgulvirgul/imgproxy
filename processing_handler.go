@@ -16,14 +16,19 @@ var (
 	processingSem chan struct{}
 
 	headerVaryValue string
+	fallbackImage   *imageData
 )
 
-func initProcessingHandler() {
+func initProcessingHandler() error {
+	var err error
+
 	processingSem = make(chan struct{}, conf.Concurrency)
 
 	if conf.GZipCompression > 0 {
 		responseGzipBufPool = newBufPool("gzip", conf.Concurrency, conf.GZipBufferSize)
-		responseGzipPool = newGzipPool(conf.Concurrency)
+		if responseGzipPool, err = newGzipPool(conf.Concurrency); err != nil {
+			return err
+		}
 	}
 
 	vary := make([]string, 0)
@@ -41,6 +46,12 @@ func initProcessingHandler() {
 	}
 
 	headerVaryValue = strings.Join(vary, ", ")
+
+	if fallbackImage, err = getFallbackImageData(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func respondWithImage(ctx context.Context, reqID string, r *http.Request, rw http.ResponseWriter, data []byte) {
@@ -55,6 +66,14 @@ func respondWithImage(ctx context.Context, reqID string, r *http.Request, rw htt
 
 	rw.Header().Set("Content-Type", po.Format.Mime())
 	rw.Header().Set("Content-Disposition", contentDisposition)
+
+	if conf.SetCanonicalHeader {
+		origin := getImageURL(ctx)
+		if strings.HasPrefix(origin, "https://") || strings.HasPrefix(origin, "http://") {
+			linkHeader := fmt.Sprintf(`<%s>; rel="canonical"`, origin)
+			rw.Header().Set("Link", linkHeader)
+		}
+	}
 
 	var cacheControl, expires string
 
@@ -77,6 +96,11 @@ func respondWithImage(ctx context.Context, reqID string, r *http.Request, rw htt
 
 	if len(headerVaryValue) > 0 {
 		rw.Header().Set("Vary", headerVaryValue)
+	}
+
+	if conf.EnableDebugHeaders {
+		imgdata := getImageData(ctx)
+		rw.Header().Set("X-Origin-Content-Length", strconv.Itoa(len(imgdata.Data)))
 	}
 
 	if conf.GZipCompression > 0 && strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
@@ -119,7 +143,7 @@ func handleProcessing(reqID string, rw http.ResponseWriter, r *http.Request) {
 
 	if newRelicEnabled {
 		var newRelicCancel context.CancelFunc
-		ctx, newRelicCancel = startNewRelicTransaction(ctx, rw, r)
+		ctx, newRelicCancel, rw = startNewRelicTransaction(ctx, rw, r)
 		defer newRelicCancel()
 	}
 
@@ -128,7 +152,11 @@ func handleProcessing(reqID string, rw http.ResponseWriter, r *http.Request) {
 		defer startPrometheusDuration(prometheusRequestDuration)()
 	}
 
-	processingSem <- struct{}{}
+	select {
+	case processingSem <- struct{}{}:
+	case <-ctx.Done():
+		panic(newError(499, "Request was cancelled before processing", "Cancelled"))
+	}
 	defer func() { <-processingSem }()
 
 	ctx, timeoutCancel := context.WithTimeout(ctx, time.Duration(conf.WriteTimeout)*time.Second)
@@ -148,7 +176,17 @@ func handleProcessing(reqID string, rw http.ResponseWriter, r *http.Request) {
 		if prometheusEnabled {
 			incrementPrometheusErrorsTotal("download")
 		}
-		panic(err)
+
+		if fallbackImage == nil {
+			panic(err)
+		}
+
+		if ierr, ok := err.(*imgproxyError); !ok || ierr.Unexpected {
+			reportError(err, r)
+		}
+
+		logWarning("Could not load image. Using fallback image: %s", err.Error())
+		ctx = context.WithValue(ctx, imageDataCtxKey, fallbackImage)
 	}
 
 	checkTimeout(ctx)
@@ -164,6 +202,21 @@ func handleProcessing(reqID string, rw http.ResponseWriter, r *http.Request) {
 	}
 
 	checkTimeout(ctx)
+
+	if len(conf.SkipProcessingFormats) > 0 {
+		imgdata := getImageData(ctx)
+		po := getProcessingOptions(ctx)
+
+		if imgdata.Type == po.Format || po.Format == imageTypeUnknown {
+			for _, f := range conf.SkipProcessingFormats {
+				if f == imgdata.Type {
+					po.Format = imgdata.Type
+					respondWithImage(ctx, reqID, r, rw, imgdata.Data)
+					return
+				}
+			}
+		}
+	}
 
 	imageData, processcancel, err := processImage(ctx)
 	defer processcancel()

@@ -24,6 +24,7 @@ const (
 	imageTypeICO     = imageType(C.ICO)
 	imageTypeSVG     = imageType(C.SVG)
 	imageTypeHEIC    = imageType(C.HEIC)
+	imageTypeAVIF    = imageType(C.AVIF)
 	imageTypeBMP     = imageType(C.BMP)
 	imageTypeTIFF    = imageType(C.TIFF)
 
@@ -40,6 +41,7 @@ var (
 		"ico":  imageTypeICO,
 		"svg":  imageTypeSVG,
 		"heic": imageTypeHEIC,
+		"avif": imageTypeAVIF,
 		"bmp":  imageTypeBMP,
 		"tiff": imageTypeTIFF,
 	}
@@ -52,6 +54,7 @@ var (
 		imageTypeICO:  "image/x-icon",
 		imageTypeSVG:  "image/svg+xml",
 		imageTypeHEIC: "image/heif",
+		imageTypeAVIF: "image/avif",
 		imageTypeBMP:  "image/bmp",
 		imageTypeTIFF: "image/tiff",
 	}
@@ -64,6 +67,7 @@ var (
 		imageTypeICO:  "inline; filename=\"%s.ico\"",
 		imageTypeSVG:  "inline; filename=\"%s.svg\"",
 		imageTypeHEIC: "inline; filename=\"%s.heic\"",
+		imageTypeAVIF: "inline; filename=\"%s.avif\"",
 		imageTypeBMP:  "inline; filename=\"%s.bmp\"",
 		imageTypeTIFF: "inline; filename=\"%s.tiff\"",
 	}
@@ -116,4 +120,14 @@ func (it imageType) ContentDispositionFromURL(imageURL string) string {
 	}
 
 	return it.ContentDisposition(strings.TrimSuffix(filename, filepath.Ext(filename)))
+}
+
+func (it imageType) SupportsAlpha() bool {
+	return it != imageTypeJPEG && it != imageTypeBMP
+}
+
+func (it imageType) SupportsColourProfile() bool {
+	return it == imageTypeJPEG ||
+		it == imageTypeWEBP ||
+		it == imageTypeAVIF
 }

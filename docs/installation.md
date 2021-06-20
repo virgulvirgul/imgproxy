@@ -64,6 +64,31 @@ brew install imgproxy
 
 ## From the source
 
+You can get imgproxy source by cloning the GitHub repo:
+
+```bash
+git clone https://github.com/imgproxy/imgproxy.git
+cd imgproxy
+```
+
+...or by downloading the source tarball:
+
+```bash
+mkdir imgproxy
+cd imgproxy
+curl -Ls https://github.com/imgproxy/imgproxy/archive/master.tar.gz \
+  | tar -xz --strip-components 1 -C .
+```
+
+You can also download the specific version:
+
+```bash
+mkdir imgproxy
+cd imgproxy
+curl -Ls https://github.com/imgproxy/imgproxy/archive/v2.13.1.tar.gz \
+  | tar -xz --strip-components 1 -C .
+```
+
 ### Ubuntu
 
 First, install [libvips](https://github.com/libvips/libvips).
@@ -89,7 +114,8 @@ sudo apt-get install golang-go
 And finally, install imgproxy itself:
 
 ```bash
-CGO_LDFLAGS_ALLOW="-s|-w" go get -f -u github.com/imgproxy/imgproxy
+CGO_LDFLAGS_ALLOW="-s|-w" \
+  go build -o /usr/local/bin/imgproxy
 ```
 
 ### macOS + Homebrew
@@ -99,5 +125,5 @@ brew install vips go
 PKG_CONFIG_PATH="$(brew --prefix libffi)/lib/pkgconfig" \
   CGO_LDFLAGS_ALLOW="-s|-w" \
   CGO_CFLAGS_ALLOW="-Xpreprocessor" \
-  go get -f -u github.com/imgproxy/imgproxy
+  go build -o /usr/local/bin/imgproxy
 ```

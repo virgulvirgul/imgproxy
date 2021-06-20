@@ -1,4 +1,4 @@
 ARG IMGPROXY_TAG=latest
 
-FROM virgulvirgul/imgproxy:$IMGPROXY_TAG
+FROM darthsim/imgproxy:$IMGPROXY_TAG
 LABEL maintainer="Sergey Alexandrovich <darthsim@gmail.com>"
